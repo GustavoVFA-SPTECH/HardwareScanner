@@ -1,7 +1,6 @@
 import mysql.connector
 
 #Server Connection
-
 mydb = mysql.connector.connect(
     host="",
     port="",
@@ -10,4 +9,5 @@ mydb = mysql.connector.connect(
 )
 
 #Cursor
+cursor = mydb.cursor()
 
