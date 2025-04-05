@@ -44,5 +44,9 @@ def buscarMaquina (mobuId):
 
     if cursorSelect.fetchone() == None:
         print("Maquina não encontrada")
+        return False
     else:
         print("Maquina já cadastrada")
+        return True
+
+
