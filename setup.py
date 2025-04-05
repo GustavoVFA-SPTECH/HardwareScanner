@@ -16,31 +16,22 @@ def formatSize(bytes):
         bytes /= 1024
     return f"{bytes:.2f} PB"
 
-
 def getMobuId(so):
     try:
-        if so == 'windows':
-            command = 'wmic baseboard get serialnumber /value'
-            result = subprocess.check_output(command, shell=True, text=True, stderr=subprocess.DEVNULL)
-            match = re.search(r'SerialNumber=([^\r\n]+)', result)
-            if match:
-                serial = match.group(1).strip()
-                if serial and serial.lower() not in ['na', 'none', 'to be filled of by o.e.m', 'empty']:
-                    return serial
-            return None
-
-        elif so == 'linux':
-            try:
-                with open('/sys/class/dmi/id/board_serial', 'r') as f:
-                    return f.read().strip()
-            except:
-                command = 'sudo dmicode -s baseboard-serial-number'
-                result = subprocess.check_output(command, shell=True, text=True, stderr=subprocess.DEVNULL)
-                return result.strip() if result.strip() else None
+        if so == "windows":
+            mobuId = subprocess.check_output(["powershell", "-Command",
+                                                      "Get-WmiObject Win32_BaseBoard | Select-Object -ExpandProperty SerialNumber"],
+                                                     shell=True).decode().strip()
+            if not mobuId:
+                mobuId = "UUID não encontrado"
+        elif so == "linux":
+            mobuId = subprocess.check_output("sudo dmidecode -s system-uuid", shell=True).decode().strip()
+        else:
+            mobuId = "Desconhecido"
+        return mobuId
     except Exception as e:
         print(f"Erro ao obter ID da placa-mãe: {str(e)}")
         return None
-
 
 def getHostname(so):
     try:
@@ -58,7 +49,6 @@ def getHostname(so):
 
         print(f"Erro ao obter hostname: {e}")
         return None
-
 
 def getMacAddress(system):
     if system == "windows":
@@ -102,7 +92,6 @@ def getMacAddress(system):
 
     return None
 
-
 def getDiscos(so):
     disks_info = []
 
@@ -136,13 +125,27 @@ def getDiscos(so):
                     })
         except Exception as e:
             print(f"Erro: {str(e)}")
+    print(disks_info)
     return disks_info
 
-getDiscos(so)
+def getRam(so):
+    try:
+        if so == "windows":
+            cmd = 'wmic memorychip get capacity'
+            result = subprocess.run(cmd, shell=True, capture_output=True, text=True)
+            if result.returncode == 0:
+                total_bytes = sum(int(num) for num in re.findall(r'\d+', result.stdout))
+                return total_bytes
 
-
-def getRam():
-    return
+        elif so == "linux":
+            with open('/proc/meminfo', 'r') as f:
+                meminfo = f.read()
+                match = re.search(r'MemTotal:\s+(\d+)\s+kB', meminfo)
+                if match:
+                    return int(match.group(1)) * 1024
+    except Exception as e:
+        print(f"Erro ao obter RAM")
 
 def getCpu():
     return
+
