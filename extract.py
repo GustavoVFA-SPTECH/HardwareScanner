@@ -100,4 +100,5 @@ def monitor_system(companyName, mobuID):
             print(f"Erro durante o monitoramento: {str(e)}")
             time.sleep(2)
 
+
 monitor_system('teste', getMobuId(so))
