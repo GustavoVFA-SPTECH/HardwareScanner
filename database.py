@@ -55,11 +55,6 @@ def buscarMaquina (mobuId):
         cursorSelect.close()
         return cursorSelect.fetchone()[0]\
 
-
 def buscarComponentes (id):
     query = f"SELECT * FROM Components WHERE fkServer = {id}"
     cursorSelect.execute(query)
-
-def cadastrarComponentes():
-    query = f"INSERT INTO Components () VALUES ('')"
-

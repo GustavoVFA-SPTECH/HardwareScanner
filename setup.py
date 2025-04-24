@@ -193,13 +193,16 @@ def get_system_components(so):
 
     return components
 
-def sync_components(fkServer):
+def sync_components(fkServer, so):
     try:
-        so = 'windows' if platform.system() == 'Windows' else 'linux'
         current_components = get_system_components(so)
         current_names = {comp['name'] for comp in current_components}
 
-        query_select = "SELECT idComponent, name, type, description FROM Component WHERE fkServer = %s"
+        query_select = """
+               SELECT idComponent, name, type, description 
+               FROM Component 
+               WHERE fkServer = %s AND active = 1
+               """
         cursorSelect.execute(query_select, (fkServer,))
         db_components = []
 
@@ -212,26 +215,30 @@ def sync_components(fkServer):
             })
 
         db_name_map = {comp['name']: comp for comp in db_components}
-
         for db_comp in db_components:
             if db_comp['name'] not in current_names:
-                delete_query = "DELETE FROM Component WHERE idComponent = %s"
-                cursorInsert.execute(delete_query, (db_comp['idComponent'],))
-                print(f"[DELETADO] Componente obsoleto: {db_comp['name']}")
+                deactivate_query = """
+                       UPDATE Component 
+                       SET active = 0 
+                       WHERE idComponent = %s
+                       """
+                cursorInsert.execute(deactivate_query, (db_comp['idComponent'],))
+                print(f"[DESATIVADO] Componente: {db_comp['name']}")
 
         for current_comp in current_components:
             current_desc = str(current_comp['description']) if current_comp['description'] else None
 
             if current_comp['name'] in db_name_map:
                 db_comp = db_name_map[current_comp['name']]
-
                 if (db_comp['type'] != current_comp['type'] or
                         str(db_comp['description']) != str(current_desc)):
                     update_query = """
-                    UPDATE Component 
-                    SET type = %s, description = %s 
-                    WHERE idComponent = %s
-                    """
+                           UPDATE Component 
+                           SET type = %s, 
+                               description = %s,
+                               active = 1 
+                           WHERE idComponent = %s
+                           """
                     cursorInsert.execute(update_query, (
                         current_comp['type'],
                         current_desc,
@@ -239,11 +246,11 @@ def sync_components(fkServer):
                     ))
                     print(f"[ATUALIZADO] Componente: {current_comp['name']}")
             else:
-
                 insert_query = """
-                INSERT INTO Component (name, type, description, fkServer)
-                VALUES (%s, %s, %s, %s)
-                """
+                       INSERT INTO Component 
+                       (name, type, description, fkServer, active)
+                       VALUES (%s, %s, %s, %s, 1)
+                       """
                 cursorInsert.execute(insert_query, (
                     current_comp['name'],
                     current_comp['type'],
