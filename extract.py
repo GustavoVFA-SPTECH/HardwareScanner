@@ -1,7 +1,5 @@
 import psutil
 
-
-
 # Extração dados da CPU
 
 def cpuData():
@@ -35,7 +33,5 @@ def processData():
         print(proc.memory_percent())
         print(proc.cpu_percent())
         print(proc.memory_info().vms)
-        
 
-    
 processData()

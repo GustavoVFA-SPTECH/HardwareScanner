@@ -29,14 +29,18 @@ def buscarUsuario (name, password):
     if cursorSelect.fetchone() == None:
         print("Usuario ou senha incorreto, por favor tente novamente !!!")
         print("Atenção, caso ainda não seja cadastrado na plataforma, cadastre-se e tente novamente ")
+        cursorSelect.close()
         return False
     else:
         print("Login Realizado com Sucesso!!!")
+        cursorSelect.close()
         return True
 
 def cadastrarMaquina (hostname, macAdress, mobuId, fkCompany):
     query = f"INSERT INTO Server (hostname, macAdress, mobuId, fkCompany, status) VALUES ('{hostname}', '{macAdress}', '{mobuId}', {fkCompany});"
-    return
+    cursorInsert.execute(query)
+    insert.commit()
+    cursorInsert.close()
 
 def buscarMaquina (mobuId):
     query = f"SELECT idServer, hostName FROM Server WHERE mobuId = '{mobuId}';"
@@ -44,9 +48,18 @@ def buscarMaquina (mobuId):
 
     if cursorSelect.fetchone() == None:
         print("Maquina não encontrada")
-        return False
+        cursorSelect.close()
+        return None
     else:
         print("Maquina já cadastrada")
-        return True
+        cursorSelect.close()
+        return cursorSelect.fetchone()[0]\
 
+
+def buscarComponentes (id):
+    query = f"SELECT * FROM Components WHERE fkServer = {id}"
+    cursorSelect.execute(query)
+
+def cadastrarComponentes():
+    query = f"INSERT INTO Components () VALUES ('')"
 

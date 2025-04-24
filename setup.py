@@ -1,20 +1,22 @@
 import os
 import platform
 import socket
+import mysql.connector
 import subprocess
 import json
 import re
 
+from database import cursorInsert, cursorSelect, insert, select
+
 so = platform.system().lower()
 version = platform.release()
-
 
 def formatSize(bytes):
     for unit in ['B', 'KB', 'MB', 'GB', 'TB']:
         if bytes < 1024:
-            return f"{bytes:.2f} {unit}"
+            return f"{bytes:.2f}"
         bytes /= 1024
-    return f"{bytes:.2f} PB"
+    return f"{bytes:.2f}"
 
 def getMobuId(so):
     try:
@@ -105,7 +107,7 @@ def getDiscos(so):
             for vol in volumes:
                 disks_info.append({
                     'path': f"{vol['DriveLetter']}:",
-                    'size': vol['Size']
+                    'size': formatSize(vol['Size'])
                 })
         except Exception as e:
             print(f"Erro {str(e)}")
@@ -121,11 +123,10 @@ def getDiscos(so):
                 if disk['type'] == 'disk':
                     disks_info.append({
                         'path': f"/dev/{disk['name']}",
-                        'size': int(disk['size'])
+                        'size': int(formatSize(disk['size']))
                     })
         except Exception as e:
             print(f"Erro: {str(e)}")
-    print(disks_info)
     return disks_info
 
 def getRam(so):
@@ -135,7 +136,7 @@ def getRam(so):
             result = subprocess.run(cmd, shell=True, capture_output=True, text=True)
             if result.returncode == 0:
                 total_bytes = sum(int(num) for num in re.findall(r'\d+', result.stdout))
-                return total_bytes
+                return formatSize(total_bytes)
 
         elif so == "linux":
             with open('/proc/meminfo', 'r') as f:
@@ -146,6 +147,121 @@ def getRam(so):
     except Exception as e:
         print(f"Erro ao obter RAM")
 
-def getCpu():
-    return
+def getCpu(so):
+    try:
+        if so == "windows":
+            command = 'wmic cpu get name'
+            result = subprocess.run(command, shell=True, capture_output=True, text=True)
+            if result.returncode == 0:
+                cpu_name = [line.strip() for line in result.stdout.split('\n') if line.strip()][1]
+                return cpu_name
 
+        elif so == "linux":
+            command = "cat /proc/cpuinfo | grep 'model name' | uniq | cut -d ':' -f 2 | xargs"
+            result = subprocess.run(command, shell=True, capture_output=True, text=True)
+            if result.returncode == 0:
+                return result.stdout.strip()
+
+    except Exception as e:
+        print(f"Erro ao obter informações da CPU: {str(e)}")
+
+    return "Informação não disponível"
+
+def get_system_components(so):
+    components = []
+
+    disks = getDiscos(so)
+    for disk in disks:
+        components.append({
+            'name': disk['path'],
+            'type': 'Disk',
+            'description': disk['size']
+        })
+    ram_size = getRam(so)
+    components.append({
+        'name': 'Memoria Ram',
+        'type': 'Ram',
+        'description': ram_size
+    })
+
+    cpu_name = getCpu(so)
+    components.append({
+        'name': cpu_name,
+        'type': 'Cpu',
+        'description': None
+    })
+
+    return components
+
+def sync_components(fkServer):
+    try:
+        so = 'windows' if platform.system() == 'Windows' else 'linux'
+        current_components = get_system_components(so)
+        current_names = {comp['name'] for comp in current_components}
+
+        query_select = "SELECT idComponent, name, type, description FROM Component WHERE fkServer = %s"
+        cursorSelect.execute(query_select, (fkServer,))
+        db_components = []
+
+        for (idComponent, name, type_, description) in cursorSelect:
+            db_components.append({
+                'idComponent': idComponent,
+                'name': name,
+                'type': type_,
+                'description': description
+            })
+
+        db_name_map = {comp['name']: comp for comp in db_components}
+
+        for db_comp in db_components:
+            if db_comp['name'] not in current_names:
+                delete_query = "DELETE FROM Component WHERE idComponent = %s"
+                cursorInsert.execute(delete_query, (db_comp['idComponent'],))
+                print(f"[DELETADO] Componente obsoleto: {db_comp['name']}")
+
+        for current_comp in current_components:
+            current_desc = str(current_comp['description']) if current_comp['description'] else None
+
+            if current_comp['name'] in db_name_map:
+                db_comp = db_name_map[current_comp['name']]
+
+                if (db_comp['type'] != current_comp['type'] or
+                        str(db_comp['description']) != str(current_desc)):
+                    update_query = """
+                    UPDATE Component 
+                    SET type = %s, description = %s 
+                    WHERE idComponent = %s
+                    """
+                    cursorInsert.execute(update_query, (
+                        current_comp['type'],
+                        current_desc,
+                        db_comp['idComponent']
+                    ))
+                    print(f"[ATUALIZADO] Componente: {current_comp['name']}")
+            else:
+
+                insert_query = """
+                INSERT INTO Component (name, type, description, fkServer)
+                VALUES (%s, %s, %s, %s)
+                """
+                cursorInsert.execute(insert_query, (
+                    current_comp['name'],
+                    current_comp['type'],
+                    current_desc,
+                    fkServer
+                ))
+                print(f"[INSERIDO] Novo componente: {current_comp['name']}")
+
+        insert.commit()
+        print("✅ Sincronização concluída com sucesso!")
+        return True
+
+    except mysql.connector.Error as err:
+        print(f"❌ Erro MySQL: {err}")
+        insert.rollback()
+        return False
+
+    except Exception as e:
+        print(f"❌ Erro geral: {str(e)}")
+        insert.rollback()
+        return False
