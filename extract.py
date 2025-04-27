@@ -1,4 +1,11 @@
+import os
+
 import psutil
+import requests
+from setup import formatSize
+
+
+urlFlask = "http://44.208.193.41:5000/s3/raw/upload"
 
 def cpuData():
     cpuFreq = psutil.cpu_freq()
@@ -18,30 +25,65 @@ def diskData(path):
 
     return diskUsed, diskPercent
 
-def processData():
-    for proc in psutil.process_iter([]):
-        print(proc.name())
-        print(proc.memory_percent())
-        print(proc.cpu_percent())
-        print(proc.memory_info().vms)
-
 import csv
 from datetime import datetime
 import time
 
 from setup import getDiscos, so, getMobuId
 
-def monitor_system(companyName, mobuID):
+def processData():
+    processes = []
+    for proc in psutil.process_iter(['name', 'memory_percent', 'cpu_percent', 'memory_info']):
+        try:
+            process_info = {
+                'name': proc.info['name'],
+                'memory_percent': proc.info['memory_percent'],
+                'cpu_percent': proc.info['cpu_percent'],
+                'vms': proc.info['memory_info'].vms if proc.info['memory_info'] else None
+            }
+            processes.append(process_info)
+        except (psutil.NoSuchProcess, psutil.AccessDenied):
+            continue
+    return processes
+
+def send_file_to_api(file_path, api_url):
+    """Envia um arquivo para a API Flask"""
+    try:
+        with open(file_path, 'rb') as file:
+            files = {'file': (os.path.basename(file_path), file)}
+            response = requests.post(api_url, files=files)
+
+        if response.status_code == 200:
+            print(f"Arquivo {file_path} enviado com sucesso para a API")
+            # Opcional: remover o arquivo local após envio
+            os.remove(file_path)
+            return True
+        else:
+            print(f"Erro ao enviar arquivo: {response.status_code} - {response.text}")
+            return False
+    except Exception as e:
+        print(f"Falha ao enviar arquivo {file_path} para a API: {str(e)}")
+        return False
+
+def monitor_and_send(companyName, mobuID, api_url):
+    """Função principal que monitora o sistema e envia os arquivos para a API"""
     record_count = 0
     current_file = None
+    current_process_file = None
     discos = None
 
-    def create_new_file():
-        nonlocal current_file, discos, record_count
+    def create_new_files():
+        nonlocal current_file, current_process_file, discos, record_count
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+
+        # Arquivo principal de monitoramento do sistema
         output_file = f"{companyName}_{mobuID}_{timestamp}.csv"
+        # Arquivo de processos
+        process_file = f"{companyName}_{mobuID}_{timestamp}_process.csv"
 
         discos = getDiscos(so)
+
+        # Criar arquivo de monitoramento do sistema
         with open(output_file, mode='w', newline='') as file:
             writer = csv.writer(file)
             headers = ['data_hora', 'cpu_freq', 'cpu_percent', 'ram_used', 'ram_percent']
@@ -55,18 +97,33 @@ def monitor_system(companyName, mobuID):
 
             writer.writerow(headers)
 
-        print(f"Novo arquivo de monitoramento criado: {output_file}")
-        record_count = 0
-        return output_file, discos
+        # Criar arquivo de processos
+        with open(process_file, mode='w', newline='') as file:
+            writer = csv.writer(file)
+            writer.writerow(['data_hora', 'process_name', 'memory_percent', 'cpu_percent', 'vms'])
 
-    current_file, discos = create_new_file()
+        print(f"Novos arquivos de monitoramento criados:")
+        print(f"- {output_file}")
+        print(f"- {process_file}")
+
+        record_count = 0
+        return output_file, process_file, discos
+
+    current_file, current_process_file, discos = create_new_files()
 
     while True:
         try:
             if record_count >= 100:
-                current_file, discos = create_new_file()
+                # Envia os arquivos atuais para a API antes de criar novos
+                send_file_to_api(current_file, api_url)
+                send_file_to_api(current_process_file, api_url)
+
+                # Cria novos arquivos
+                current_file, current_process_file, discos = create_new_files()
 
             data_hora = datetime.now().strftime('%d/%m/%Y %H:%M:%S')
+
+            # Coletar dados do sistema
             cpuFreq, cpuPercent = cpuData()
             ramUsed, ramPercent = ramData()
 
@@ -81,24 +138,40 @@ def monitor_system(companyName, mobuID):
             for disco in discos:
                 try:
                     disk_used, disk_percent = diskData(disco['path'])
-                    row.extend([disk_used, disk_percent])  # Removido o path da linha
+                    row.extend([disk_used, disk_percent])
                 except Exception as e:
                     print(f"Erro ao acessar disco {disco['path']}: {str(e)}")
-                    row.extend([None, None])  # Mantém None para os valores de erro
+                    row.extend([None, None])
 
+            # Escrever dados do sistema no arquivo principal
             with open(current_file, mode='a', newline='') as file:
                 writer = csv.writer(file)
                 writer.writerow(row)
+
+            # Coletar e escrever dados dos processos
+            processes = processData()
+            with open(current_process_file, mode='a', newline='') as file:
+                writer = csv.writer(file)
+                for proc in processes:
+                    writer.writerow([
+                        data_hora,
+                        proc['name'],
+                        proc['memory_percent'],
+                        proc['cpu_percent'],
+                        proc['vms']
+                    ])
 
             record_count += 1
             time.sleep(2)
 
         except KeyboardInterrupt:
             print("\nMonitoramento encerrado pelo usuário")
+
+            # Envia os arquivos finais antes de sair
+            send_file_to_api(current_file, api_url)
+            send_file_to_api(current_process_file, api_url)
             break
+
         except Exception as e:
             print(f"Erro durante o monitoramento: {str(e)}")
             time.sleep(2)
-
-
-monitor_system('teste', getMobuId(so))
