@@ -55,7 +55,6 @@ def register_machine(username, company_id):
 
     return machine_id
 
-
 def configure_limits(machine_id):
     clear_screen()
     print("=== Configuração de Limites ===")
@@ -79,7 +78,6 @@ def configure_limits(machine_id):
         time.sleep(2)
 
     return limits
-
 
 def main():
     api_url = "http://44.208.193.41:5000/s3/raw/upload"
