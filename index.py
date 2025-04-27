@@ -8,7 +8,6 @@ from extract import monitor_and_send
 def clear_screen():
     os.system('cls' if os.name == 'nt' else 'clear')
 
-
 def login():
     clear_screen()
     print("=== TechPix - Sistema de Monitoramento ===")
@@ -19,11 +18,10 @@ def login():
         password = input("Senha: ")
 
         user_data = buscarUsuario(username, password)
-        if user_data:  # Agora buscarUsuario retorna (success, company_id)
-            return username, user_data[1]  # Retorna username e company_id
+        if user_data:
+            return username, user_data[1]
         else:
             print("\nCredenciais inválidas. Tente novamente.\n")
-
 
 def register_machine(username, company_id):
     clear_screen()
@@ -86,9 +84,8 @@ def configure_limits(machine_id):
 def main():
     api_url = "http://44.208.193.41:5000/s3/raw/upload"
 
-    # Fluxo principal
     username, company_id = login()
-    company_name = get_company_name(company_id)  # Nova função no database.py
+    company_name = get_company_name(company_id)
     machine_id = register_machine(username, company_id)
     limits = configure_limits(machine_id)
 

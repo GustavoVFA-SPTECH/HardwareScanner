@@ -195,11 +195,9 @@ def get_system_components(so):
 
 def sync_components(fkServer, fkCompany, so):
     try:
-        # 1. Obter componentes atuais do sistema
         current_components = get_system_components(so)
         current_names = {comp['name'] for comp in current_components}
 
-        # 2. Obter componentes registrados no banco para este servidor e empresa
         query_select = """
                        SELECT idComponent, name, type, description
                        FROM Component
@@ -217,8 +215,6 @@ def sync_components(fkServer, fkCompany, so):
             })
 
         db_name_map = {comp['name']: comp for comp in db_components}
-
-        # 3. Desativar componentes que não existem mais no sistema
         for db_comp in db_components:
             if db_comp['name'] not in current_names:
                 deactivate_query = """
@@ -229,13 +225,10 @@ def sync_components(fkServer, fkCompany, so):
                                    """
                 cursorInsert.execute(deactivate_query, (db_comp['idComponent'], fkServer))
                 print(f"[DESATIVADO] Componente: {db_comp['name']}")
-
-        # 4. Atualizar/Inserir componentes
         for current_comp in current_components:
             current_desc = str(current_comp['description']) if current_comp['description'] else None
 
             if current_comp['name'] in db_name_map:
-                # Componente existe - verificar se precisa atualizar
                 db_comp = db_name_map[current_comp['name']]
                 needs_update = (
                         db_comp['type'] != current_comp['type'] or
@@ -259,7 +252,6 @@ def sync_components(fkServer, fkCompany, so):
                     ))
                     print(f"[ATUALIZADO] Componente: {current_comp['name']}")
             else:
-                # Componente novo - inserir
                 insert_query = """
                                INSERT INTO Component
                                    (name, type, description, fkServer, active)
@@ -273,7 +265,6 @@ def sync_components(fkServer, fkCompany, so):
                 ))
                 print(f"[INSERIDO] Novo componente: {current_comp['name']}")
 
-        # 5. Confirmar transação
         insert.commit()
         print(f"✅ Sincronização concluída para servidor {fkServer} (Empresa {fkCompany})")
         return True

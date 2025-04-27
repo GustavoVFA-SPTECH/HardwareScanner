@@ -2,8 +2,6 @@ import os
 
 import psutil
 import requests
-from setup import formatSize
-
 
 urlFlask = "http://44.208.193.41:5000/s3/raw/upload"
 
@@ -47,7 +45,6 @@ def processData():
     return processes
 
 def send_file_to_api(file_path, api_url):
-    """Envia um arquivo para a API Flask"""
     try:
         with open(file_path, 'rb') as file:
             files = {'file': (os.path.basename(file_path), file)}
@@ -55,7 +52,6 @@ def send_file_to_api(file_path, api_url):
 
         if response.status_code == 200:
             print(f"Arquivo {file_path} enviado com sucesso para a API")
-            # Opcional: remover o arquivo local após envio
             os.remove(file_path)
             return True
         else:
@@ -66,7 +62,6 @@ def send_file_to_api(file_path, api_url):
         return False
 
 def monitor_and_send(companyName, mobuID, api_url):
-    """Função principal que monitora o sistema e envia os arquivos para a API"""
     record_count = 0
     current_file = None
     current_process_file = None
@@ -76,14 +71,12 @@ def monitor_and_send(companyName, mobuID, api_url):
         nonlocal current_file, current_process_file, discos, record_count
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
 
-        # Arquivo principal de monitoramento do sistema
         output_file = f"{companyName}_{mobuID}_{timestamp}.csv"
-        # Arquivo de processos
+
         process_file = f"{companyName}_{mobuID}_{timestamp}_process.csv"
 
         discos = getDiscos(so)
 
-        # Criar arquivo de monitoramento do sistema
         with open(output_file, mode='w', newline='') as file:
             writer = csv.writer(file)
             headers = ['data_hora', 'cpu_freq', 'cpu_percent', 'ram_used', 'ram_percent']
@@ -97,7 +90,6 @@ def monitor_and_send(companyName, mobuID, api_url):
 
             writer.writerow(headers)
 
-        # Criar arquivo de processos
         with open(process_file, mode='w', newline='') as file:
             writer = csv.writer(file)
             writer.writerow(['data_hora', 'process_name', 'memory_percent', 'cpu_percent', 'vms'])
@@ -114,16 +106,14 @@ def monitor_and_send(companyName, mobuID, api_url):
     while True:
         try:
             if record_count >= 100:
-                # Envia os arquivos atuais para a API antes de criar novos
+
                 send_file_to_api(current_file, api_url)
                 send_file_to_api(current_process_file, api_url)
 
-                # Cria novos arquivos
                 current_file, current_process_file, discos = create_new_files()
 
             data_hora = datetime.now().strftime('%d/%m/%Y %H:%M:%S')
 
-            # Coletar dados do sistema
             cpuFreq, cpuPercent = cpuData()
             ramUsed, ramPercent = ramData()
 
@@ -143,12 +133,10 @@ def monitor_and_send(companyName, mobuID, api_url):
                     print(f"Erro ao acessar disco {disco['path']}: {str(e)}")
                     row.extend([None, None])
 
-            # Escrever dados do sistema no arquivo principal
             with open(current_file, mode='a', newline='') as file:
                 writer = csv.writer(file)
                 writer.writerow(row)
 
-            # Coletar e escrever dados dos processos
             processes = processData()
             with open(current_process_file, mode='a', newline='') as file:
                 writer = csv.writer(file)
@@ -167,7 +155,6 @@ def monitor_and_send(companyName, mobuID, api_url):
         except KeyboardInterrupt:
             print("\nMonitoramento encerrado pelo usuário")
 
-            # Envia os arquivos finais antes de sair
             send_file_to_api(current_file, api_url)
             send_file_to_api(current_process_file, api_url)
             break

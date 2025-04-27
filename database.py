@@ -1,7 +1,6 @@
 import mysql.connector
 from mysql.connector import Error
 
-#Server Connection
 insert = mysql.connector.connect(
     host="44.208.193.41",
     port="3306",
@@ -17,11 +16,8 @@ select = mysql.connector.connect(
     database="TechPix"
 )
 
-#Cursor
 cursorInsert = insert.cursor()
 cursorSelect = select.cursor()
-
-#Querys
 
 def buscarUsuario(name, password):
     """Retorna (success, company_id) se válido, False caso contrário"""
@@ -63,4 +59,3 @@ def get_company_name(company_id):
     cursorSelect.execute(query, (company_id,))
     result = cursorSelect.fetchone()
     return result[0] if result else "TechPix"
-
