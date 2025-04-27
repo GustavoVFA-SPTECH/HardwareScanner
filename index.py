@@ -1,6 +1,6 @@
 import os
 import time
-from database import buscarUsuario, buscarMaquina, cadastrarMaquina, buscarComponentes, get_company_name
+from database import buscarUsuario, buscarMaquina, cadastrarMaquina, get_company_name
 from setup import getHostname, getMacAddress, getMobuId, so, sync_components
 from extract import monitor_and_send
 
@@ -12,7 +12,7 @@ def clear_screen():
 def login():
     clear_screen()
     print("=== TechPix - Sistema de Monitoramento ===")
-    print("\nPor favor, faça login:")
+    print("\nPor favor, faça login")
 
     while True:
         username = input("Usuário: ")
@@ -38,7 +38,7 @@ def register_machine(username, company_id):
     print(f"Endereço MAC: {mac_address}")
     print(f"ID da Placa-Mãe: {mobu_id}")
 
-    machine_id = buscarMaquina(mobu_id)
+    machine_id = buscarMaquina(mobu_id, company_id)
 
     if machine_id is None:
         print("\nEsta máquina não está cadastrada no sistema.")
@@ -47,13 +47,13 @@ def register_machine(username, company_id):
         if confirm == 'S':
             cadastrarMaquina(hostname, mac_address, mobu_id, company_id)
             print("Máquina cadastrada com sucesso!")
-            machine_id = buscarMaquina(mobu_id)
+            machine_id = buscarMaquina(mobu_id, company_id)
         else:
             print("O cadastro da máquina é necessário para continuar.")
             time.sleep(2)
             return register_machine(username, company_id)
 
-    sync_components(machine_id, so)
+    sync_components(machine_id, company_id, so)
 
     return machine_id
 
@@ -84,7 +84,7 @@ def configure_limits(machine_id):
 
 
 def main():
-    api_url = "http://localhost:5000/s3/raw/upload"
+    api_url = "http://44.208.193.41:5000/s3/raw/upload"
 
     # Fluxo principal
     username, company_id = login()

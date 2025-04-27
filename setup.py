@@ -204,9 +204,8 @@ def sync_components(fkServer, fkCompany, so):
                        SELECT idComponent, name, type, description
                        FROM Component
                        WHERE fkServer = %s
-                         AND fkCompany = %s
                        """
-        cursorSelect.execute(query_select, (fkServer, fkCompany))
+        cursorSelect.execute(query_select, (fkServer,))
         db_components = []
 
         for (idComponent, name, type_, description) in cursorSelect:
@@ -224,12 +223,11 @@ def sync_components(fkServer, fkCompany, so):
             if db_comp['name'] not in current_names:
                 deactivate_query = """
                                    UPDATE Component
-                                   SET active     = 0,
-                                       updated_at = NOW()
+                                   SET active     = 0
                                    WHERE idComponent = %s
-                                     AND fkCompany = %s
+                                     AND fkServer = %s
                                    """
-                cursorInsert.execute(deactivate_query, (db_comp['idComponent'], fkCompany))
+                cursorInsert.execute(deactivate_query, (db_comp['idComponent'], fkServer))
                 print(f"[DESATIVADO] Componente: {db_comp['name']}")
 
         # 4. Atualizar/Inserir componentes
@@ -249,31 +247,29 @@ def sync_components(fkServer, fkCompany, so):
                                    UPDATE Component
                                    SET type        = %s,
                                        description = %s,
-                                       active      = 1,
-                                       updated_at  = NOW()
+                                       active      = 1
                                    WHERE idComponent = %s
-                                     AND fkCompany = %s
+                                     AND fkServer = %s
                                    """
                     cursorInsert.execute(update_query, (
                         current_comp['type'],
                         current_desc,
                         db_comp['idComponent'],
-                        fkCompany
+                        fkServer
                     ))
                     print(f"[ATUALIZADO] Componente: {current_comp['name']}")
             else:
                 # Componente novo - inserir
                 insert_query = """
                                INSERT INTO Component
-                                   (name, type, description, fkServer, fkCompany, active, created_at)
-                               VALUES (%s, %s, %s, %s, %s, 1, NOW())
+                                   (name, type, description, fkServer, active)
+                               VALUES (%s, %s, %s, %s, 1)
                                """
                 cursorInsert.execute(insert_query, (
                     current_comp['name'],
                     current_comp['type'],
                     current_desc,
                     fkServer,
-                    fkCompany
                 ))
                 print(f"[INSERIDO] Novo componente: {current_comp['name']}")
 

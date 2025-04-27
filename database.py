@@ -41,7 +41,7 @@ def buscarUsuario(name, password):
 
 def cadastrarMaquina(hostname, macAdress, mobuId, fkCompany):
     query = """INSERT INTO Server 
-               (hostname, macAdress, mobuId, fkCompany, status) 
+               (hostname, macAddress, mobuId, fkCompany, status) 
                VALUES (%s, %s, %s, %s, 'active')"""
     try:
         cursorInsert.execute(query, (hostname, macAdress, mobuId, fkCompany))
@@ -55,10 +55,12 @@ def buscarMaquina(mobuId, fkCompany):
     query = """SELECT idServer FROM Server 
                WHERE mobuId = %s AND fkCompany = %s"""
     cursorSelect.execute(query, (mobuId, fkCompany))
-    return cursorSelect.fetchone()[0] if cursorSelect.fetchone() else None
+    result = cursorSelect.fetchone()
+    return result[0] if result else None
 
 def get_company_name(company_id):
-    query = "SELECT companyName FROM Company WHERE idCompany = %s"
+    query = "SELECT socialReason FROM Company WHERE idCompany = %s"
     cursorSelect.execute(query, (company_id,))
     result = cursorSelect.fetchone()
     return result[0] if result else "TechPix"
+
