@@ -1,12 +1,13 @@
 import os
 import platform
 import socket
-import mysql.connector
 import subprocess
 import json
 import re
+import requests
 
-from database import cursorInsert, cursorSelect, insert, select
+API_BASE_URL = "http://44.208.193.41:3000/api"
+HEADERS = {"Content-Type": "application/json"}
 
 so = platform.system().lower()
 version = platform.release()
@@ -18,12 +19,13 @@ def formatSize(bytes):
         bytes /= 1024
     return f"{bytes:.2f}"
 
+
 def getMobuId(so):
     try:
         if so == "windows":
             mobuId = subprocess.check_output(["powershell", "-Command",
-                                                      "Get-WmiObject Win32_BaseBoard | Select-Object -ExpandProperty SerialNumber"],
-                                                     shell=True).decode().strip()
+                                              "Get-WmiObject Win32_BaseBoard | Select-Object -ExpandProperty SerialNumber"],
+                                             shell=True).decode().strip()
             if not mobuId:
                 mobuId = "UUID não encontrado"
         elif so == "linux":
@@ -34,6 +36,7 @@ def getMobuId(so):
     except Exception as e:
         print(f"Erro ao obter ID da placa-mãe: {str(e)}")
         return None
+
 
 def getHostname(so):
     try:
@@ -48,9 +51,9 @@ def getHostname(so):
         return hostname
 
     except Exception as e:
-
         print(f"Erro ao obter hostname: {e}")
         return None
+
 
 def getMacAddress(system):
     if system == "windows":
@@ -94,6 +97,7 @@ def getMacAddress(system):
 
     return None
 
+
 def getDiscos(so):
     disks_info = []
 
@@ -129,6 +133,7 @@ def getDiscos(so):
             print(f"Erro: {str(e)}")
     return disks_info
 
+
 def getRam(so):
     try:
         if so == "windows":
@@ -146,6 +151,7 @@ def getRam(so):
                     return int(match.group(1)) * 1024
     except Exception as e:
         print(f"Erro ao obter RAM")
+
 
 def getCpu(so):
     try:
@@ -166,6 +172,7 @@ def getCpu(so):
         print(f"Erro ao obter informações da CPU: {str(e)}")
 
     return "Informação não disponível"
+
 
 def get_system_components(so):
     components = []
@@ -193,88 +200,109 @@ def get_system_components(so):
 
     return components
 
+
+def buscarUsuario(name, password):
+    """Retorna (success, company_id, company_name) se válido"""
+    try:
+        response = requests.post(
+            f"{API_BASE_URL}/login",
+            json={"name": name, "password": password},
+            headers=HEADERS
+        )
+
+        if response.status_code == 200:
+            data = response.json()
+            if data.get("success"):
+                print("Login realizado com sucesso!")
+                return (True, data["company_id"], data["company_name"])
+            else:
+                print("Usuário ou senha incorretos!")
+                return (False, None, None)
+        else:
+            print(f"Erro na requisição: {response.status_code}")
+            return (False, None, None)
+
+    except requests.exceptions.RequestException as e:
+        print(f"Erro ao conectar com a API: {e}")
+        return (False, None, None)
+
+
+def cadastrarMaquina(hostname, macAddress, mobuId, fkCompany):
+    """Cadastra uma nova máquina e retorna o ID ou None em caso de erro"""
+    try:
+        response = requests.post(
+            f"{API_BASE_URL}/machines",
+            json={
+                "hostname": hostname,
+                "macAddress": macAddress,
+                "mobuId": mobuId,
+                "fkCompany": fkCompany
+            },
+            headers=HEADERS
+        )
+
+        if response.status_code == 200:
+            data = response.json()
+            if data.get("success"):
+                print("Máquina cadastrada com sucesso!")
+                return data.get("machine_id")
+            else:
+                print(f"Erro ao cadastrar: {data.get('message')}")
+        else:
+            print(f"Erro na requisição: {response.status_code}")
+
+    except requests.exceptions.RequestException as e:
+        print(f"Erro ao conectar com a API: {e}")
+
+    return None
+
+
+def buscarMaquina(mobuId, fkCompany):
+    """Verifica se máquina existe e retorna seu ID ou None"""
+    try:
+        response = requests.get(
+            f"{API_BASE_URL}/machines",
+            params={"mobuId": mobuId, "fkCompany": fkCompany},
+            headers=HEADERS
+        )
+
+        if response.status_code == 200:
+            data = response.json()
+            if data.get("exists"):
+                return data["machine"]["idServer"]
+
+    except requests.exceptions.RequestException as e:
+        print(f"Erro ao conectar com a API: {e}")
+
+    return None
+
+
 def sync_components(fkServer, fkCompany, so):
     try:
         current_components = get_system_components(so)
-        current_names = {comp['name'] for comp in current_components}
 
-        query_select = """
-                       SELECT idComponent, name, type, description
-                       FROM Component
-                       WHERE fkServer = %s
-                       """
-        cursorSelect.execute(query_select, (fkServer,))
-        db_components = []
+        response = requests.post(
+            f"{API_BASE_URL}/components/sync",
+            json={
+                "fkServer": fkServer,
+                "fkCompany": fkCompany,
+                "components": current_components
+            },
+            headers=HEADERS
+        )
 
-        for (idComponent, name, type_, description) in cursorSelect:
-            db_components.append({
-                'idComponent': idComponent,
-                'name': name,
-                'type': type_,
-                'description': description
-            })
+        if response.status_code == 200:
+            data = response.json()
+            print(data.get('message', 'Sincronização concluída com sucesso'))
+            return True
+        else:
+            error_data = response.json()
+            print(f"Erro na sincronização: {error_data.get('message', 'Erro desconhecido')}")
+            return False
 
-        db_name_map = {comp['name']: comp for comp in db_components}
-        for db_comp in db_components:
-            if db_comp['name'] not in current_names:
-                deactivate_query = """
-                                   UPDATE Component
-                                   SET active     = 0
-                                   WHERE idComponent = %s
-                                     AND fkServer = %s
-                                   """
-                cursorInsert.execute(deactivate_query, (db_comp['idComponent'], fkServer))
-                print(f"[DESATIVADO] Componente: {db_comp['name']}")
-        for current_comp in current_components:
-            current_desc = str(current_comp['description']) if current_comp['description'] else None
-
-            if current_comp['name'] in db_name_map:
-                db_comp = db_name_map[current_comp['name']]
-                needs_update = (
-                        db_comp['type'] != current_comp['type'] or
-                        str(db_comp['description']) != current_desc
-                )
-
-                if needs_update:
-                    update_query = """
-                                   UPDATE Component
-                                   SET type        = %s,
-                                       description = %s,
-                                       active      = 1
-                                   WHERE idComponent = %s
-                                     AND fkServer = %s
-                                   """
-                    cursorInsert.execute(update_query, (
-                        current_comp['type'],
-                        current_desc,
-                        db_comp['idComponent'],
-                        fkServer
-                    ))
-                    print(f"[ATUALIZADO] Componente: {current_comp['name']}")
-            else:
-                insert_query = """
-                               INSERT INTO Component
-                                   (name, type, description, fkServer, active)
-                               VALUES (%s, %s, %s, %s, 1)
-                               """
-                cursorInsert.execute(insert_query, (
-                    current_comp['name'],
-                    current_comp['type'],
-                    current_desc,
-                    fkServer,
-                ))
-                print(f"[INSERIDO] Novo componente: {current_comp['name']}")
-
-        insert.commit()
-        print(f"✅ Sincronização concluída para servidor {fkServer} (Empresa {fkCompany})")
-        return True
-
-    except mysql.connector.Error as err:
-        print(f"❌ Erro MySQL durante sincronização: {err}")
-        insert.rollback()
+    except requests.exceptions.RequestException as e:
+        print(f"Erro de conexão com a API: {str(e)}")
         return False
-
     except Exception as e:
-        print(f"❌ Erro inesperado durante sincronização: {str(e)}")
-        insert.rollback()
+        print(f"Erro inesperado: {str(e)}")
         return False

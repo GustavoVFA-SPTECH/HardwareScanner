@@ -27,7 +27,7 @@ import csv
 from datetime import datetime
 import time
 
-from setup import getDiscos, so, getMobuId
+from setup import getDiscos, so
 
 def processData():
     processes = []

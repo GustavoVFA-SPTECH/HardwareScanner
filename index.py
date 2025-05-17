@@ -1,9 +1,7 @@
 import os
 import time
-from database import buscarUsuario, buscarMaquina, cadastrarMaquina, get_company_name
-from setup import getHostname, getMacAddress, getMobuId, so, sync_components
+from setup import getHostname, getMacAddress, getMobuId, so, sync_components, buscarUsuario, buscarMaquina, cadastrarMaquina
 from extract import monitor_and_send
-
 
 def clear_screen():
     os.system('cls' if os.name == 'nt' else 'clear')
@@ -19,7 +17,8 @@ def login():
 
         user_data = buscarUsuario(username, password)
         if user_data:
-            return username, user_data[1]
+            # A função buscarUsuario agora retorna (success, company_id, company_name)
+            return username, user_data[1], user_data[2]  # username, company_id, company_name
         else:
             print("\nCredenciais inválidas. Tente novamente.\n")
 
@@ -43,15 +42,24 @@ def register_machine(username, company_id):
         confirm = input("Deseja cadastrá-la agora? (S/N): ").strip().upper()
 
         if confirm == 'S':
-            cadastrarMaquina(hostname, mac_address, mobu_id, company_id)
-            print("Máquina cadastrada com sucesso!")
-            machine_id = buscarMaquina(mobu_id, company_id)
+            # A função cadastrarMaquina agora retorna o machine_id diretamente
+            machine_id = cadastrarMaquina(hostname, mac_address, mobu_id, company_id)
+            if machine_id:
+                print("Máquina cadastrada com sucesso!")
+            else:
+                print("Falha ao cadastrar máquina. Tente novamente.")
+                time.sleep(2)
+                return register_machine(username, company_id)
         else:
             print("O cadastro da máquina é necessário para continuar.")
             time.sleep(2)
             return register_machine(username, company_id)
 
-    sync_components(machine_id, company_id, so)
+    # A função sync_components foi adaptada para usar a API
+    if sync_components(machine_id, company_id, so):
+        print("Componentes sincronizados com sucesso!")
+    else:
+        print("Aviso: Falha ao sincronizar componentes")
 
     return machine_id
 
@@ -82,8 +90,8 @@ def configure_limits(machine_id):
 def main():
     api_url = "http://44.208.193.41:5000/s3/raw/upload"
 
-    username, company_id = login()
-    company_name = get_company_name(company_id)
+    # Agora o login retorna também o company_name
+    username, company_id, company_name = login()
     machine_id = register_machine(username, company_id)
     limits = configure_limits(machine_id)
 
